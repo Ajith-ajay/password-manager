@@ -17,3 +17,5 @@ samples, guidance on mobile development, and a full API reference.
 
 The password manager app is very useful for saving passcode in any time and easy retrieval.
 Now this repo  is under developmen .... if you have any idea to improve the app or the feature that may need for th app. the request will be accepted.
+
+This is the demo project.
