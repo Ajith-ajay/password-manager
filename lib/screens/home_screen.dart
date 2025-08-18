@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'add_password_screen.dart';
 
@@ -55,12 +57,101 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _savePasswordsToFile() async {
+    if (_passwords.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No saved passwords to export')),
+      );
+      return;
+    }
+
+    try {
+      // Request permission (Android 13+ uses manage external storage)
+      if (await Permission.manageExternalStorage.isDenied) {
+        await Permission.manageExternalStorage.request();
+      }
+
+      // Use the public Downloads directory
+      final downloadsDir = Directory('/storage/emulated/0/Download');
+
+      if (!await downloadsDir.exists()) {
+        throw Exception('Downloads folder not found');
+      }
+
+      // Save file in Downloads
+      final file = File('${downloadsDir.path}/passwords_backup.json');
+
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(_passwords),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Passwords exported to Downloads: ${file.path}')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error exporting: $e')),
+      );
+    }
+  }
+
+  Future<void> _deletePassword(int index) async {
+    setState(() {
+      _passwords.removeAt(index);
+    });
+    await _secureStorage.write(
+      key: 'passwords',
+      value: json.encode(_passwords),
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Password deleted')),
+    );
+  }
+
+  Future<void> _editPassword(int index, Map<String, String> password) async {
+    final updatedPassword = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddPasswordScreen(
+          existingPassword: password,
+          index: index,
+        ),
+      ),
+    );
+
+    if (updatedPassword == true) {
+      _loadPasswords(); // refresh after edit
+    }
+
+    if (updatedPassword != null) {
+      setState(() {
+        _passwords[index] = Map<String, String>.from(updatedPassword);
+      });
+
+      await _secureStorage.write(
+        key: 'passwords',
+        value: json.encode(_passwords),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password updated')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Passwords'),
         actions: [
+          // IconButton(
+          //   icon: const Icon(Icons.download),
+          //   tooltip: 'Export Passwords',
+          //   onPressed: _savePasswordsToFile,
+          // ),
           IconButton(
             icon: const Icon(Icons.exit_to_app),
             onPressed: _logout,
@@ -72,7 +163,10 @@ class _HomeScreenState extends State<HomeScreen> {
         onPressed: () async {
           await Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const AddPasswordScreen()),
+            MaterialPageRoute(
+                builder: (context) => const AddPasswordScreen(
+                      existingPassword: {},
+                    )),
           );
           _loadPasswords();
         },
@@ -91,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       subtitle: Text(item['username'] ?? ''),
                       onTap: () {
                         // Show password details
-                        _showPasswordDetails(item);
+                        _showPasswordDetails(item, index);
                       },
                     );
                   },
@@ -99,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showPasswordDetails(Map<String, String> password) {
+  void _showPasswordDetails(Map<String, String> password, int index) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -122,6 +216,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
+          TextButton(
+              onPressed: () => _editPassword(index, password),
+              child: const Text('Edit', style: TextStyle(color: Colors.blue))),
+          TextButton(
+              onPressed: () => _deletePassword(index),
+              child: const Text('Delete', style: TextStyle(color: Colors.red))),
           TextButton(
             child: const Text('Close'),
             onPressed: () => Navigator.pop(context),

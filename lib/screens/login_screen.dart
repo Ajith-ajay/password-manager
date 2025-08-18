@@ -19,7 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _biometricAvailable = false;
   bool _useBiometrics = false;
-  String _biometricType = '';
+  BiometricType? _biometricType;
 
   @override
   void initState() {
@@ -73,7 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           _biometricAvailable = available;
           _useBiometrics = prefs.getBool('use_biometrics') ?? available;
-          _biometricType = types.first;
+          _biometricType = types.first; // store as BiometricType
         });
       }
     } catch (e) {
@@ -81,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  String _getBiometricName(BiometricType type) {
+  String _getBiometricName(BiometricType? type) {
     switch (type) {
       case BiometricType.face:
         return 'Face ID';
@@ -146,17 +146,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       : const Text('Login'),
                 ),
               ),
-              if (_biometricAvailable) ...[
+              if (_biometricAvailable && _biometricType != null) ...[
                 const SizedBox(height: 20),
                 const Divider(),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    icon: Icon(_biometricType.contains('Face')
-                        ? Icons.face
-                        : Icons.fingerprint),
-                    label: Text('Use $_biometricType'),
+                    icon: Icon(
+                      _biometricType == BiometricType.face
+                          ? Icons.face
+                          : Icons.fingerprint,
+                    ),
+                    label: Text(
+                        'Use ${_getBiometricName(_biometricType as BiometricType?)}'),
                     onPressed: _isLoading ? null : _biometricLogin,
                   ),
                 ),

@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AddPasswordScreen extends StatefulWidget {
-  const AddPasswordScreen({Key? key}) : super(key: key);
+  final Map<String, dynamic>? existingPassword; // for editing
+  final int? index; // index of the password in storage
+
+  const AddPasswordScreen({Key? key, this.existingPassword, this.index})
+      : super(key: key);
 
   @override
   _AddPasswordScreenState createState() => _AddPasswordScreenState();
@@ -18,9 +22,31 @@ class _AddPasswordScreenState extends State<AddPasswordScreen> {
   bool _isSaving = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.existingPassword != null) {
+      // Pre-fill fields if editing
+      _serviceController.text = widget.existingPassword!['service'] ?? '';
+      _usernameController.text = widget.existingPassword!['username'] ?? '';
+      _passwordController.text = widget.existingPassword!['password'] ?? '';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isEditing = widget.existingPassword != null;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Add New Password')),
+      appBar: AppBar(
+        title: Text(isEditing ? 'Edit Password' : 'Add New Password'),
+        actions: [
+          if (isEditing)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: _deletePassword,
+            ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -59,7 +85,7 @@ class _AddPasswordScreenState extends State<AddPasswordScreen> {
                 onPressed: _isSaving ? null : _savePassword,
                 child: _isSaving
                     ? const CircularProgressIndicator()
-                    : const Text('Save Password'),
+                    : Text(isEditing ? 'Update Password' : 'Save Password'),
               ),
             ],
           ),
@@ -68,17 +94,18 @@ class _AddPasswordScreenState extends State<AddPasswordScreen> {
     );
   }
 
-  // Update the _savePassword method
   Future<void> _savePassword() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isSaving = true);
 
       try {
-        final newPassword = <String, String>{
+        final updatedPassword = <String, String>{
           'service': _serviceController.text,
           'username': _usernameController.text,
           'password': _passwordController.text,
-          'createdAt': DateTime.now().toIso8601String(),
+          'createdAt': widget.existingPassword?['createdAt'] ??
+              DateTime.now().toIso8601String(),
+          'updatedAt': DateTime.now().toIso8601String(),
         };
 
         // Get existing passwords
@@ -87,25 +114,52 @@ class _AddPasswordScreenState extends State<AddPasswordScreen> {
             ? List<Map<String, dynamic>>.from(json.decode(existing))
             : [];
 
-        // Add new password
-        passwords.add(newPassword);
+        if (widget.index != null) {
+          // Edit mode: update the password at index
+          passwords[widget.index!] = updatedPassword;
+        } else {
+          // Add mode
+          passwords.add(updatedPassword);
+        }
 
-        // Save back to secure storage
         await _secureStorage.write(
           key: 'passwords',
           value: json.encode(passwords),
         );
 
-        Navigator.pop(context);
+        Navigator.pop(context, true); // return true to refresh list
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error saving password: $e')),
         );
       } finally {
-        if (mounted) {
-          setState(() => _isSaving = false);
+        if (mounted) setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  Future<void> _deletePassword() async {
+    try {
+      final existing = await _secureStorage.read(key: 'passwords');
+      if (existing != null) {
+        final List<Map<String, dynamic>> passwords =
+            List<Map<String, dynamic>>.from(json.decode(existing));
+
+        if (widget.index != null) {
+          passwords.removeAt(widget.index!);
+
+          await _secureStorage.write(
+            key: 'passwords',
+            value: json.encode(passwords),
+          );
+
+          Navigator.pop(context, true); // refresh list
         }
       }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error deleting password: $e')),
+      );
     }
   }
 
